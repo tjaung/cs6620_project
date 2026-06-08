@@ -1,0 +1,19 @@
+aws_region         = "us-east-1"
+project_name       = "security-scan-platform"
+source_bucket_name = "REPLACE_WITH_S3_BUCKET_OUTPUT"
+
+# Real AWS account mode:
+use_lab_role            = false
+create_github_oidc_role = true
+
+# AWS Academy Learner Lab mode:
+# use_lab_role            = true
+# create_github_oidc_role = false
+
+# In real AWS account mode, allow every repo under this owner/org:
+github_owner = "REPLACE_WITH_GITHUB_ORG_OR_USERNAME"
+github_repo  = ""
+
+# Or restrict to one repo:
+# github_owner = "REPLACE_WITH_GITHUB_ORG_OR_USERNAME"
+# github_repo  = "REPLACE_WITH_REPO_NAME"

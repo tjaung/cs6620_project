@@ -1,0 +1,10 @@
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+lambda/terraform.tfvars
+s3/terraform.tfvars
+lambda/build/
+lambda/repo-reader.zip
+repo.zip
+lambda-response.json
