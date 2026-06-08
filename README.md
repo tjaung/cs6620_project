@@ -14,6 +14,125 @@ This is not a "follow the recipe" project. You will make architectural decisions
 
 ---
 
+## GitHub Actions Security Scan Setup
+
+This project includes a minimal CI/CD integration that lets a GitHub Actions workflow zip a repository, upload it to S3, invoke Lambda, and print the Lambda response in the Actions logs. In the current proof of concept, Lambda reads the uploaded repo zip and prints small file previews. Later, this same Lambda flow can be extended to call the SAST and pentest EC2 services.
+
+### 1. Deploy S3 and Lambda in AWS Learner Lab
+
+Start your AWS Academy Learner Lab and copy the temporary AWS credentials from **AWS Details**. In your terminal, export them using the `*_VALUE` names expected by the deploy script:
+
+```bash
+export AWS_ACCESS_KEY_ID_VALUE="PASTE_LEARNER_LAB_ACCESS_KEY_ID"
+export AWS_SECRET_ACCESS_KEY_VALUE="PASTE_LEARNER_LAB_SECRET_ACCESS_KEY"
+export AWS_SESSION_TOKEN_VALUE="PASTE_LEARNER_LAB_SESSION_TOKEN"
+export AWS_REGION_VALUE="us-east-1"
+```
+
+Set the GitHub owner/repo values and a unique project name:
+
+```bash
+export GITHUB_OWNER_VALUE="YOUR_GITHUB_USERNAME_OR_ORG"
+export GITHUB_REPO_VALUE=""
+export PROJECT_NAME_VALUE="security-scan-YOUR_NAME"
+```
+
+Run the deploy script:
+
+```bash
+./scripts/deploy-learner-lab.sh
+```
+
+The script deploys the S3 bucket and Lambda, then prints values like:
+
+```text
+SECURITY_SCAN_AWS_REGION=us-east-1
+SECURITY_SCAN_ARTIFACT_BUCKET=security-scan-YOUR_NAME-artifacts-xxxxxxxx
+SECURITY_SCAN_LAMBDA_FUNCTION_NAME=security-scan-YOUR_NAME-repo-reader
+```
+
+Save these values. You will add them to the GitHub repo that should run the security test workflow.
+
+### 2. Add GitHub Actions Secrets
+
+In the GitHub repo you want to test, go to:
+
+```text
+Settings -> Secrets and variables -> Actions -> Secrets
+```
+
+Add these secrets using your current Learner Lab credentials:
+
+```text
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
+AWS_SESSION_TOKEN
+```
+
+Learner Lab credentials expire, so update these secrets whenever your lab session refreshes.
+
+### 3. Add GitHub Actions Variables
+
+In the same GitHub repo, go to:
+
+```text
+Settings -> Secrets and variables -> Actions -> Variables
+```
+
+Add the values printed by the deploy script:
+
+```text
+SECURITY_SCAN_AWS_REGION
+SECURITY_SCAN_ARTIFACT_BUCKET
+SECURITY_SCAN_LAMBDA_FUNCTION_NAME
+```
+
+### 4. Add the Workflow YAML
+
+In the repo you want to test, create:
+
+```text
+.github/workflows/securitytests.yaml
+```
+
+Use this workflow:
+
+```yaml
+name: Security Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  security-tests:
+    uses: YOUR_GITHUB_OWNER/YOUR_SECURITY_PLATFORM_REPO/.github/workflows/securitytests.yaml@main
+    permissions:
+      id-token: write
+      contents: read
+    secrets:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+```
+
+Replace `YOUR_GITHUB_OWNER/YOUR_SECURITY_PLATFORM_REPO` with the GitHub repo where this security platform project is pushed. The workflow runs on every branch push, on pull requests, and when manually triggered.
+
+### 5. What Happens When It Runs
+
+The GitHub Action will:
+
+1. Check out the repo being tested.
+2. Zip the repo.
+3. Upload `repo.zip` to the deployed S3 bucket.
+4. Invoke the deployed Lambda.
+5. Print the Lambda response in the GitHub Actions logs.
+
+If this succeeds, the CI/CD-to-AWS integration is working. The next step is extending Lambda so it sends source files to the SAST EC2 service and target URLs to the pentest EC2 service.
+
+---
+
 ## Understanding Application Security Testing
 
 ### What is SAST (Static Application Security Testing)?
