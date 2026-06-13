@@ -28,19 +28,19 @@ resource "aws_security_group" "sast_sg" {
   vpc_id      = data.aws_vpc.default.id
 
   ingress {
-    description = "SSH from my IP"
+    description = "SSH from anywhere"
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["71.227.224.139/32"]
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   ingress {
-    description = "SAST service port from my IP"
+    description = "SAST service port"
     from_port   = 3000
     to_port     = 3000
     protocol    = "tcp"
-    cidr_blocks = ["71.227.224.139/32"]
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
@@ -60,11 +60,10 @@ resource "aws_instance" "sast_server" {
   associate_public_ip_address = true
   iam_instance_profile        = "LabInstanceProfile"
   key_name                    = "vockey"
-  
+  user_data_replace_on_change = true
 
   user_data = <<-EOF
     #!/bin/bash
-    yum update -y
     yum install -y docker
     systemctl start docker
     systemctl enable docker

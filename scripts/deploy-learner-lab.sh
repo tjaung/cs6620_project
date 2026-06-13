@@ -41,14 +41,32 @@ export AWS_SESSION_TOKEN="${AWS_SESSION_TOKEN_VALUE}"
 export AWS_DEFAULT_REGION="${AWS_REGION_VALUE}"
 export AWS_REGION="${AWS_REGION_VALUE}"
 
+terraform_apply() {
+  local stack_name="$1"
+  local stack_dir="$2"
+  shift 2
+
+  echo "Deploying ${stack_name}..."
+  terraform -chdir="${stack_dir}" init -upgrade
+  terraform -chdir="${stack_dir}" apply "$@" -auto-approve
+}
+
 echo "Deploying S3 artifact bucket..."
-terraform -chdir="${ROOT_DIR}/s3" init
-terraform -chdir="${ROOT_DIR}/s3" apply \
+terraform_apply "S3 artifact bucket" "${ROOT_DIR}/s3" \
   -var="aws_region=${AWS_REGION_VALUE}" \
-  -var="project_name=${PROJECT_NAME_VALUE}" \
-  -auto-approve
+  -var="project_name=${PROJECT_NAME_VALUE}"
 
 SOURCE_BUCKET_NAME="$(terraform -chdir="${ROOT_DIR}/s3" output -raw bucket_name)"
+
+terraform_apply "SAST EC2 service" "${ROOT_DIR}/sast/terraform"
+SAST_PUBLIC_IP="$(terraform -chdir="${ROOT_DIR}/sast/terraform" output -raw sast_public_ip)"
+SAST_HEALTH_ENDPOINT="$(terraform -chdir="${ROOT_DIR}/sast/terraform" output -raw sast_health_endpoint)"
+
+terraform_apply "Pentest EC2 service" "${ROOT_DIR}/pentest/terraform" \
+  -var="region=${AWS_REGION_VALUE}"
+PENTEST_PUBLIC_IP="$(terraform -chdir="${ROOT_DIR}/pentest/terraform" output -raw pentest_public_ip)"
+PENTEST_URL="$(terraform -chdir="${ROOT_DIR}/pentest/terraform" output -raw pentest_url)"
+PENTEST_HEALTH_ENDPOINT="$(terraform -chdir="${ROOT_DIR}/pentest/terraform" output -raw health_check_url)"
 
 echo "Writing Lambda terraform.tfvars..."
 cat > "${ROOT_DIR}/lambda/terraform.tfvars" <<EOF
@@ -61,9 +79,7 @@ github_owner            = "${GITHUB_OWNER_VALUE}"
 github_repo             = "${GITHUB_REPO_VALUE}"
 EOF
 
-echo "Deploying Lambda with the Learner Lab LabRole..."
-terraform -chdir="${ROOT_DIR}/lambda" init
-terraform -chdir="${ROOT_DIR}/lambda" apply -auto-approve
+terraform_apply "Lambda with the Learner Lab LabRole" "${ROOT_DIR}/lambda"
 
 LAMBDA_FUNCTION_NAME="$(terraform -chdir="${ROOT_DIR}/lambda" output -raw lambda_function_name)"
 
@@ -76,6 +92,11 @@ Use these values in your GitHub workflow inputs or repository variables:
 SECURITY_SCAN_AWS_REGION=${AWS_REGION_VALUE}
 SECURITY_SCAN_ARTIFACT_BUCKET=${SOURCE_BUCKET_NAME}
 SECURITY_SCAN_LAMBDA_FUNCTION_NAME=${LAMBDA_FUNCTION_NAME}
+SAST_PUBLIC_IP=${SAST_PUBLIC_IP}
+SAST_HEALTH_ENDPOINT=${SAST_HEALTH_ENDPOINT}
+PENTEST_PUBLIC_IP=${PENTEST_PUBLIC_IP}
+PENTEST_URL=${PENTEST_URL}
+PENTEST_HEALTH_ENDPOINT=${PENTEST_HEALTH_ENDPOINT}
 
 Because AWS Academy Learner Lab blocks IAM role and OIDC provider creation,
 also add these temporary Learner Lab values as GitHub Actions secrets:

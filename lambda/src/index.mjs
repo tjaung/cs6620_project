@@ -3,8 +3,15 @@ import { createWriteStream, promises as fs } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
+<<<<<<< HEAD
 import zlib from "node:zlib";
 
+=======
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
+>>>>>>> 81464e9 (Add basic terraform to make lambda and s3. No connections to ec2 yet)
 const s3 = new S3Client({});
 
 const MAX_FILES_TO_REPORT = Number.parseInt(process.env.MAX_FILES_TO_REPORT ?? "40", 10);
@@ -96,6 +103,7 @@ const downloadS3Object = async (bucket, key, destinationPath) => {
 };
 
 const unzip = async (zipPath, destinationDir) => {
+<<<<<<< HEAD
   const zipBuffer = await fs.readFile(zipPath);
   const entries = readZipEntries(zipBuffer);
 
@@ -211,6 +219,9 @@ const safeJoin = (rootDir, relativePath) => {
   }
 
   return destinationPath;
+=======
+  await execFileAsync("unzip", ["-q", zipPath, "-d", destinationDir]);
+>>>>>>> 81464e9 (Add basic terraform to make lambda and s3. No connections to ec2 yet)
 };
 
 const collectFiles = async (rootDir) => {
