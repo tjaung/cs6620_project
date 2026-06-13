@@ -1,0 +1,6 @@
+aws_region              = "us-east-1"
+project_name            = "security-scan-platform"
+artifact_retention_days = 14
+
+# Optional. S3 bucket names must be globally unique, so leaving this blank is usually easiest.
+bucket_name = ""

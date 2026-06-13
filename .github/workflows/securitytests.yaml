@@ -1,0 +1,126 @@
+name: Security Tests
+
+on:
+  workflow_dispatch:
+  workflow_call:
+    inputs:
+      aws_region:
+        description: "AWS region where the S3 bucket and Lambda exist."
+        required: false
+        type: string
+        default: "us-east-1"
+      aws_role_arn:
+        description: "IAM role ARN that GitHub Actions assumes through OIDC."
+        required: false
+        type: string
+        default: ""
+      artifact_bucket:
+        description: "S3 bucket used for repo.zip and result.json artifacts."
+        required: false
+        type: string
+        default: ""
+      lambda_function_name:
+        description: "Lambda function that reads the uploaded repo zip."
+        required: false
+        type: string
+        default: ""
+    secrets:
+      aws_access_key_id:
+        description: "Temporary Learner Lab AWS access key ID. Only needed when OIDC role is unavailable."
+        required: false
+      aws_secret_access_key:
+        description: "Temporary Learner Lab AWS secret access key. Only needed when OIDC role is unavailable."
+        required: false
+      aws_session_token:
+        description: "Temporary Learner Lab AWS session token. Only needed when OIDC role is unavailable."
+        required: false
+
+jobs:
+  security-tests:
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials with OIDC
+        if: ${{ inputs.aws_role_arn != '' || vars.SECURITY_SCAN_AWS_ROLE_ARN != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ inputs.aws_role_arn || vars.SECURITY_SCAN_AWS_ROLE_ARN }}
+          aws-region: ${{ inputs.aws_region || vars.SECURITY_SCAN_AWS_REGION || 'us-east-1' }}
+
+      - name: Configure AWS credentials with Learner Lab secrets
+        if: ${{ inputs.aws_role_arn == '' && vars.SECURITY_SCAN_AWS_ROLE_ARN == '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.aws_access_key_id || secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.aws_secret_access_key || secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.aws_session_token || secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ inputs.aws_region || vars.SECURITY_SCAN_AWS_REGION || 'us-east-1' }}
+
+      - name: Package repository
+        run: |
+          zip -r repo.zip . \
+            -x ".git/*" \
+            -x "node_modules/*" \
+            -x "*/node_modules/*" \
+            -x "dist/*" \
+            -x "*/dist/*" \
+            -x "build/*" \
+            -x "*/build/*"
+
+      - name: Upload repository zip to S3
+        env:
+          ARTIFACT_BUCKET: ${{ inputs.artifact_bucket || vars.SECURITY_SCAN_ARTIFACT_BUCKET }}
+          S3_KEY: github/${{ github.repository_owner }}-${{ github.event.repository.name }}/${{ github.run_id }}/repo.zip
+        run: |
+          aws s3 cp repo.zip "s3://${ARTIFACT_BUCKET}/${S3_KEY}"
+          echo "S3_KEY=${S3_KEY}" >> "$GITHUB_ENV"
+
+      - name: Invoke repo reader Lambda
+        env:
+          ARTIFACT_BUCKET: ${{ inputs.artifact_bucket || vars.SECURITY_SCAN_ARTIFACT_BUCKET }}
+          LAMBDA_FUNCTION_NAME: ${{ inputs.lambda_function_name || vars.SECURITY_SCAN_LAMBDA_FUNCTION_NAME }}
+        run: |
+          aws lambda invoke \
+            --function-name "${LAMBDA_FUNCTION_NAME}" \
+            --cli-binary-format raw-in-base64-out \
+            --payload "{
+              \"repo\": \"${{ github.repository }}\",
+              \"sha\": \"${{ github.sha }}\",
+              \"runId\": \"${{ github.run_id }}\",
+              \"s3Bucket\": \"${ARTIFACT_BUCKET}\",
+              \"s3Key\": \"${S3_KEY}\"
+            }" \
+            lambda-response.json
+
+          cat lambda-response.json
+
+      - name: Print Lambda repo contents
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          const raw = JSON.parse(fs.readFileSync('lambda-response.json', 'utf8'));
+          const body = typeof raw.body === 'string' ? JSON.parse(raw.body) : raw;
+
+          if (!body.success) {
+            console.error(JSON.stringify(body, null, 2));
+            process.exit(1);
+          }
+
+          console.log(`Repo: ${body.repo}`);
+          console.log(`SHA: ${body.sha}`);
+          console.log(`Files found: ${body.summary.totalFiles}`);
+          console.log(`Text files found: ${body.summary.textFiles}`);
+          console.log(`Files printed: ${body.summary.reportedFiles}`);
+
+          for (const file of body.files) {
+            console.log(`\n===== ${file.path} (${file.bytes} bytes) =====`);
+            console.log(file.preview);
+          }
+          NODE
