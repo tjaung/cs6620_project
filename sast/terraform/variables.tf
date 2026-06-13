@@ -14,8 +14,8 @@ variable "instance_type" {
   default     = "t2.micro"
 }
 
-variable "pentest_docker_image" {
-  description = "Docker image for the pentest API service."
+variable "sast_docker_image" {
+  description = "Docker image for the SAST API service."
   type        = string
-  default     = "spicehandler/pentest-app:latest"
+  default     = "spicehandler/sast-app:latest"
 }

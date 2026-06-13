@@ -8,7 +8,7 @@ terraform {
 }
 
 provider "aws" {
-  region = "us-east-1"
+  region = var.region
 }
 
 data "aws_vpc" "default" {
@@ -20,6 +20,30 @@ data "aws_subnets" "public" {
     name   = "vpc-id"
     values = [data.aws_vpc.default.id]
   }
+}
+
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-2023.*-kernel-6.1-x86_64"]
+  }
+
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
+}
+
+locals {
+  ami_id = var.ami_id != "" ? var.ami_id : data.aws_ami.amazon_linux.id
 }
 
 resource "aws_security_group" "sast_sg" {
@@ -53,8 +77,8 @@ resource "aws_security_group" "sast_sg" {
 }
 
 resource "aws_instance" "sast_server" {
-  ami                         = "ami-0c02fb55956c7d316"
-  instance_type               = "t2.micro"
+  ami                         = local.ami_id
+  instance_type               = var.instance_type
   subnet_id                   = tolist(data.aws_subnets.public.ids)[0]
   vpc_security_group_ids      = [aws_security_group.sast_sg.id]
   associate_public_ip_address = true
@@ -62,14 +86,14 @@ resource "aws_instance" "sast_server" {
   key_name                    = "vockey"
   user_data_replace_on_change = true
 
-  user_data = <<-EOF
-    #!/bin/bash
-    yum install -y docker
-    systemctl start docker
-    systemctl enable docker
-    docker pull spicehandler/sast-app:latest
-    docker run -d -p 3000:3000 --name sast-app --restart unless-stopped spicehandler/sast-app:latest
-  EOF
+  user_data = <<EOF
+#!/bin/bash
+yum install -y docker
+systemctl start docker
+systemctl enable docker
+docker pull ${var.sast_docker_image}
+docker run -d -p 3000:3000 --name sast-app --restart unless-stopped ${var.sast_docker_image}
+EOF
 
   tags = {
     Name = "sast-backend"

@@ -48,7 +48,21 @@ terraform_apply() {
 
   echo "Deploying ${stack_name}..."
   terraform -chdir="${stack_dir}" init -upgrade
-  terraform -chdir="${stack_dir}" apply "$@" -auto-approve
+  if ! terraform -chdir="${stack_dir}" apply "$@" -auto-approve; then
+    cat <<EOF
+
+Terraform failed while deploying ${stack_name}.
+
+If this failed while creating an EC2 instance, get the boot log with:
+
+aws ec2 get-console-output \\
+  --instance-id INSTANCE_ID_FROM_THE_ERROR \\
+  --latest \\
+  --output text
+
+EOF
+    return 1
+  fi
 }
 
 echo "Deploying S3 artifact bucket..."
@@ -58,7 +72,8 @@ terraform_apply "S3 artifact bucket" "${ROOT_DIR}/s3" \
 
 SOURCE_BUCKET_NAME="$(terraform -chdir="${ROOT_DIR}/s3" output -raw bucket_name)"
 
-terraform_apply "SAST EC2 service" "${ROOT_DIR}/sast/terraform"
+terraform_apply "SAST EC2 service" "${ROOT_DIR}/sast/terraform" \
+  -var="region=${AWS_REGION_VALUE}"
 SAST_PUBLIC_IP="$(terraform -chdir="${ROOT_DIR}/sast/terraform" output -raw sast_public_ip)"
 SAST_HEALTH_ENDPOINT="$(terraform -chdir="${ROOT_DIR}/sast/terraform" output -raw sast_health_endpoint)"
 
