@@ -79,9 +79,9 @@ jobs:
         if: ${{ inputs.aws_role_arn == '' && vars.SECURITY_SCAN_AWS_ROLE_ARN == '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.aws_access_key_id || secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.aws_secret_access_key || secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.aws_session_token || secrets.AWS_SESSION_TOKEN }}
+          aws-access-key-id: ${{ secrets.aws_access_key_id }}
+          aws-secret-access-key: ${{ secrets.aws_secret_access_key }}
+          aws-session-token: ${{ secrets.aws_session_token }}
           aws-region: ${{ inputs.aws_region || vars.SECURITY_SCAN_AWS_REGION || 'us-east-1' }}
 
       - name: Package repository

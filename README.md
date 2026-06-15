@@ -133,9 +133,9 @@ jobs:
       id-token: write
       contents: read
     secrets:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      aws_session_token: ${{ secrets.AWS_SESSION_TOKEN }}
 ```
 
 Replace `YOUR_GITHUB_OWNER/YOUR_SECURITY_PLATFORM_REPO` with the GitHub repo where this security platform project is pushed. The workflow runs on every branch push, on pull requests, and when manually triggered.
