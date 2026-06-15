@@ -37,7 +37,7 @@ That's all you have to do really
 
 ## GitHub Actions Security Scan Setup
 
-This project includes a minimal CI/CD integration that lets a GitHub Actions workflow zip a repository, upload it to S3, invoke Lambda, and print the Lambda response in the Actions logs. In the current proof of concept, Lambda reads the uploaded repo zip and prints small file previews. Later, this same Lambda flow can be extended to call the SAST and pentest EC2 services.
+This project includes a CI/CD integration that lets a GitHub Actions workflow zip a repository, upload it to S3, invoke Lambda, run the selected security scanners, and print a plain text report in the Actions logs. The Lambda reads the uploaded repo zip for SAST scans and sends source files to the SAST EC2 service as raw strings. Pentest scans require a running target API URL because they test a live backend.
 
 ### 1. Deploy S3 and Lambda in AWS Learner Lab
 
@@ -150,7 +150,7 @@ The GitHub Action will:
 4. Invoke the deployed Lambda.
 5. Print the Lambda response in the GitHub Actions logs.
 
-If this succeeds, the CI/CD-to-AWS integration is working. The next step is extending Lambda so it sends source files to the SAST EC2 service and target URLs to the pentest EC2 service.
+If this succeeds, the CI/CD-to-AWS integration is working. The Actions logs will show a plain text summary and any findings, and the job fails when the selected scanner reports a failed security gate.
 
 ---
 

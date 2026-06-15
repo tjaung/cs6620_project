@@ -76,8 +76,10 @@ resource "aws_lambda_function" "repo_reader" {
   environment {
     variables = {
       RESULT_BUCKET       = var.source_bucket_name
-      MAX_FILES_TO_REPORT = "40"
-      MAX_BYTES_PER_FILE  = "2000"
+      SAST_SERVICE_URL    = var.sast_service_url
+      PENTEST_SERVICE_URL = var.pentest_service_url
+      MAX_FILES_TO_SCAN   = "80"
+      MAX_FILE_BYTES      = "524288"
     }
   }
 

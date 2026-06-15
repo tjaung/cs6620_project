@@ -2,6 +2,17 @@ name: Security Tests
 
 on:
   workflow_dispatch:
+    inputs:
+      scanners:
+        description: "Comma-separated scanners to run: sast, pentest, or sast,pentest."
+        required: false
+        type: string
+        default: "sast"
+      pentest_target_url:
+        description: "Target API URL for pentest scans. Required when scanners includes pentest."
+        required: false
+        type: string
+        default: ""
   workflow_call:
     inputs:
       aws_region:
@@ -24,6 +35,16 @@ on:
         required: false
         type: string
         default: ""
+      scanners:
+        description: "Comma-separated scanners to run: sast, pentest, or sast,pentest."
+        required: false
+        type: string
+        default: "sast"
+      pentest_target_url:
+        description: "Target API URL for pentest scans. Required when scanners includes pentest."
+        required: false
+        type: string
+        default: ""
     secrets:
       aws_access_key_id:
         description: "Temporary Learner Lab AWS access key ID. Only needed when OIDC role is unavailable."
@@ -33,6 +54,15 @@ on:
         required: false
       aws_session_token:
         description: "Temporary Learner Lab AWS session token. Only needed when OIDC role is unavailable."
+        required: false
+      AWS_ACCESS_KEY_ID:
+        description: "Temporary Learner Lab AWS access key ID. Uppercase alias for caller workflows."
+        required: false
+      AWS_SECRET_ACCESS_KEY:
+        description: "Temporary Learner Lab AWS secret access key. Uppercase alias for caller workflows."
+        required: false
+      AWS_SESSION_TOKEN:
+        description: "Temporary Learner Lab AWS session token. Uppercase alias for caller workflows."
         required: false
 
 jobs:
@@ -95,32 +125,94 @@ jobs:
               \"sha\": \"${{ github.sha }}\",
               \"runId\": \"${{ github.run_id }}\",
               \"s3Bucket\": \"${ARTIFACT_BUCKET}\",
-              \"s3Key\": \"${S3_KEY}\"
+              \"s3Key\": \"${S3_KEY}\",
+              \"scanners\": \"${{ inputs.scanners }}\",
+              \"pentestTargetUrl\": \"${{ inputs.pentest_target_url }}\"
             }" \
             lambda-response.json
 
-          cat lambda-response.json
-
-      - name: Print Lambda repo contents
+      - name: Print security scan results
         run: |
           node <<'NODE'
           const fs = require('fs');
           const raw = JSON.parse(fs.readFileSync('lambda-response.json', 'utf8'));
           const body = typeof raw.body === 'string' ? JSON.parse(raw.body) : raw;
 
-          if (!body.success) {
-            console.error(JSON.stringify(body, null, 2));
+          if (!body || typeof body !== 'object') {
+            console.error('Lambda returned an invalid response.');
+            console.error(JSON.stringify(raw, null, 2));
             process.exit(1);
           }
 
-          console.log(`Repo: ${body.repo}`);
-          console.log(`SHA: ${body.sha}`);
-          console.log(`Files found: ${body.summary.totalFiles}`);
-          console.log(`Text files found: ${body.summary.textFiles}`);
-          console.log(`Files printed: ${body.summary.reportedFiles}`);
+          const lines = [];
 
-          for (const file of body.files) {
-            console.log(`\n===== ${file.path} (${file.bytes} bytes) =====`);
-            console.log(file.preview);
+          lines.push('Security Scan Results');
+          lines.push('=====================');
+          lines.push(`Repo: ${body.repo}`);
+          lines.push(`SHA: ${body.sha}`);
+          lines.push(`Run ID: ${body.runId}`);
+          lines.push(`Status: ${body.success && body.passed ? 'PASSED' : 'FAILED'}`);
+          lines.push(`Scanners: ${(body.scanners || []).join(', ')}`);
+
+          if (body.sast) {
+            lines.push('');
+            lines.push('SAST');
+            lines.push('----');
+            lines.push(`Service: ${body.sast.serviceUrl || 'not configured'}`);
+            if (body.sast.error) {
+              lines.push(`Error: ${body.sast.error}`);
+            } else {
+              lines.push(`Files discovered: ${body.sast.filesDiscovered}`);
+              lines.push(`Source files matched: ${body.sast.sourceFilesMatched}`);
+              lines.push(`Files scanned: ${body.sast.filesScanned}`);
+              lines.push(`Files skipped: ${body.sast.filesSkipped}`);
+              lines.push(`Files failed: ${body.sast.filesFailed}`);
+              lines.push(`Total vulnerabilities: ${body.sast.summary.totalVulnerabilities}`);
+              lines.push(`High: ${body.sast.summary.high}`);
+              lines.push(`Medium: ${body.sast.summary.medium}`);
+              lines.push(`Low: ${body.sast.summary.low}`);
+            }
+
+            for (const finding of body.sast.vulnerabilities || []) {
+              lines.push('');
+              lines.push(`[${finding.severity}] ${finding.file}:${finding.line} ${finding.name}`);
+              lines.push(finding.description);
+              lines.push(finding.message);
+              if (finding.evidence) {
+                lines.push(`Evidence: ${finding.evidence}`);
+              }
+            }
+          }
+
+          if (body.pentest) {
+            lines.push('');
+            lines.push('Pentest');
+            lines.push('-------');
+            lines.push(`Service: ${body.pentest.serviceUrl || 'not configured'}`);
+            lines.push(`Target: ${body.pentest.targetUrl || 'not provided'}`);
+            if (body.pentest.error) {
+              lines.push(`Error: ${body.pentest.error}`);
+            } else {
+              lines.push(`Total tests: ${body.pentest.summary.totalTests}`);
+              lines.push(`Passed: ${body.pentest.summary.passed}`);
+              lines.push(`Failed: ${body.pentest.summary.failed}`);
+              lines.push(`Warnings: ${body.pentest.summary.warnings}`);
+              lines.push(`Errors: ${body.pentest.summary.errors}`);
+            }
+
+            for (const test of body.pentest.results || []) {
+              lines.push('');
+              lines.push(`[${test.status}] ${test.id} ${test.name}`);
+              lines.push(test.details || '');
+              for (const finding of test.findings || []) {
+                lines.push(`- ${finding.issue || JSON.stringify(finding)}`);
+              }
+            }
+          }
+
+          console.log(lines.join('\n'));
+
+          if (!body.success || !body.passed) {
+            process.exit(1);
           }
           NODE

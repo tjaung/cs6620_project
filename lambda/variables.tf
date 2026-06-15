@@ -15,6 +15,18 @@ variable "source_bucket_name" {
   type        = string
 }
 
+variable "sast_service_url" {
+  description = "Base URL for the SAST service, for example http://1.2.3.4:3000."
+  type        = string
+  default     = ""
+}
+
+variable "pentest_service_url" {
+  description = "Base URL for the pentest service, for example http://1.2.3.4:3000."
+  type        = string
+  default     = ""
+}
+
 variable "use_lab_role" {
   description = "Use the AWS Academy Learner Lab pre-created LabRole instead of creating IAM roles. Set true when iam:CreateRole is blocked."
   type        = bool
@@ -46,9 +58,9 @@ variable "github_repo" {
 }
 
 variable "lambda_timeout_seconds" {
-  description = "Lambda timeout for the repo-read proof of concept."
+  description = "Lambda timeout for security scans."
   type        = number
-  default     = 60
+  default     = 180
 }
 
 variable "lambda_memory_mb" {

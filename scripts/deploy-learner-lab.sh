@@ -76,6 +76,7 @@ terraform_apply "SAST EC2 service" "${ROOT_DIR}/sast/terraform" \
   -var="region=${AWS_REGION_VALUE}"
 SAST_PUBLIC_IP="$(terraform -chdir="${ROOT_DIR}/sast/terraform" output -raw sast_public_ip)"
 SAST_HEALTH_ENDPOINT="$(terraform -chdir="${ROOT_DIR}/sast/terraform" output -raw sast_health_endpoint)"
+SAST_SERVICE_URL="http://${SAST_PUBLIC_IP}:3000"
 
 terraform_apply "Pentest EC2 service" "${ROOT_DIR}/pentest/terraform" \
   -var="region=${AWS_REGION_VALUE}"
@@ -88,6 +89,8 @@ cat > "${ROOT_DIR}/lambda/terraform.tfvars" <<EOF
 aws_region              = "${AWS_REGION_VALUE}"
 project_name            = "${PROJECT_NAME_VALUE}"
 source_bucket_name      = "${SOURCE_BUCKET_NAME}"
+sast_service_url        = "${SAST_SERVICE_URL}"
+pentest_service_url     = "${PENTEST_URL}"
 use_lab_role            = true
 create_github_oidc_role = false
 github_owner            = "${GITHUB_OWNER_VALUE}"
@@ -108,6 +111,7 @@ SECURITY_SCAN_AWS_REGION=${AWS_REGION_VALUE}
 SECURITY_SCAN_ARTIFACT_BUCKET=${SOURCE_BUCKET_NAME}
 SECURITY_SCAN_LAMBDA_FUNCTION_NAME=${LAMBDA_FUNCTION_NAME}
 SAST_PUBLIC_IP=${SAST_PUBLIC_IP}
+SAST_SERVICE_URL=${SAST_SERVICE_URL}
 SAST_HEALTH_ENDPOINT=${SAST_HEALTH_ENDPOINT}
 PENTEST_PUBLIC_IP=${PENTEST_PUBLIC_IP}
 PENTEST_URL=${PENTEST_URL}

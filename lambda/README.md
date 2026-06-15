@@ -1,12 +1,14 @@
-# Lambda Repo Reader
+# Lambda Security Scan Runner
 
-This Terraform stack deploys a proof-of-concept Lambda that:
+This Terraform stack deploys a Lambda that:
 
 1. Receives an S3 bucket/key from GitHub Actions.
 2. Downloads `repo.zip` from S3.
 3. Extracts the repository in Lambda `/tmp`.
-4. Returns a JSON response with file paths and small text previews.
-5. Writes the same response to `result.json` beside the uploaded zip.
+4. Sends matching source files to the SAST service as raw strings when `scanners` includes `sast`.
+5. Sends a target URL to the pentest service when `scanners` includes `pentest`.
+6. Returns a JSON response that GitHub Actions formats into plain text logs.
+7. Writes the same response to `result.json` beside the uploaded zip.
 
 Normal AWS account apply order:
 
