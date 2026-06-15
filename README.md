@@ -167,7 +167,7 @@ jobs:
       aws_session_token: ${{ secrets.AWS_SESSION_TOKEN }}
 ```
 
-For this mode, the reusable workflow builds the outside repo's Dockerfile, starts the app container, waits for the health endpoint, starts the pentest service container, scans each path in `pentest_target_paths`, and removes both containers at the end whether the scan passes or fails.
+For this mode, the reusable workflow builds the outside repo's Dockerfile, starts the app container, waits for the health endpoint, checks out this security platform repo, builds the pentest service Docker image, scans each path in `pentest_target_paths`, and removes both containers at the end whether the scan passes or fails.
 
 If the app Dockerfile is not at the repo root, pass its path and build context:
 
@@ -179,6 +179,12 @@ If the app Dockerfile is not at the repo root, pass its path and build context:
       app_port: "3000"
       app_health_path: /health
       pentest_target_paths: /api/users,/api/login
+```
+
+While using an unmerged branch of this security platform repo, point the reusable workflow at that same branch and leave the default `security_platform_ref` as `tj/connect-all`. After merging this work, call the workflow with `@main` and set:
+
+```yaml
+      security_platform_ref: main
 ```
 
 ### 5. What Happens When It Runs

@@ -39,10 +39,20 @@ on:
         type: string
         default: "/health"
       pentest_docker_image:
-        description: "Docker image for the pentest API service used during local pentest scans."
+        description: "Docker image tag for the pentest API service used during local pentest scans."
         required: false
         type: string
-        default: "spicehandler/pentest-app:latest"
+        default: "security-test-pentest:local"
+      security_platform_repository:
+        description: "Repository containing the pentest scanner source."
+        required: false
+        type: string
+        default: "tjaung/cs6620_project"
+      security_platform_ref:
+        description: "Branch, tag, or SHA containing the pentest scanner source."
+        required: false
+        type: string
+        default: "tj/connect-all"
   workflow_call:
     inputs:
       aws_region:
@@ -101,10 +111,20 @@ on:
         type: string
         default: "/health"
       pentest_docker_image:
-        description: "Docker image for the pentest API service used during local pentest scans."
+        description: "Docker image tag for the pentest API service used during local pentest scans."
         required: false
         type: string
-        default: "spicehandler/pentest-app:latest"
+        default: "security-test-pentest:local"
+      security_platform_repository:
+        description: "Repository containing the pentest scanner source."
+        required: false
+        type: string
+        default: "tjaung/cs6620_project"
+      security_platform_ref:
+        description: "Branch, tag, or SHA containing the pentest scanner source."
+        required: false
+        type: string
+        default: "tj/connect-all"
     secrets:
       aws_access_key_id:
         description: "Temporary Learner Lab AWS access key ID. Only needed when OIDC role is unavailable."
@@ -326,6 +346,22 @@ jobs:
 
           docker logs security-test-target
           exit 1
+
+      - name: Checkout security platform for local pentest
+        if: ${{ env.RUN_LOCAL_PENTEST == 'true' }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.security_platform_repository }}
+          ref: ${{ inputs.security_platform_ref }}
+          path: .security-platform
+
+      - name: Build local pentest service image
+        if: ${{ env.RUN_LOCAL_PENTEST == 'true' }}
+        run: |
+          docker build \
+            -f .security-platform/pentest/backend/Dockerfile \
+            -t "${{ inputs.pentest_docker_image }}" \
+            .security-platform/pentest/backend
 
       - name: Start local pentest service
         if: ${{ env.RUN_LOCAL_PENTEST == 'true' }}
