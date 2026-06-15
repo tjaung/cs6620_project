@@ -391,82 +391,89 @@ jobs:
           node <<'NODE'
           const fs = require('fs');
 
-          const paths = "${{ inputs.pentest_target_paths }}"
-            .split(",")
-            .map((path) => path.trim())
-            .filter(Boolean)
-            .map((path) => path.startsWith("/") ? path : `/${path}`);
+          async function main() {
+            const paths = "${{ inputs.pentest_target_paths }}"
+              .split(",")
+              .map((path) => path.trim())
+              .filter(Boolean)
+              .map((path) => path.startsWith("/") ? path : `/${path}`);
 
-          if (paths.length === 0) {
-            console.error("No pentest target paths were provided.");
-            process.exit(1);
-          }
-
-          const baseTargetUrl = "http://host.docker.internal:${{ inputs.app_port }}";
-          const results = [];
-
-          for (const path of paths) {
-            const targetUrl = `${baseTargetUrl}${path}`;
-            console.log(`Running pentest against ${targetUrl}`);
-
-            const response = await fetch("http://127.0.0.1:3001/scan", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json"
-              },
-              body: JSON.stringify({ targetUrl })
-            });
-            const body = await response.json();
-
-            if (!response.ok || body.success === false) {
-              body.success = false;
-              body.error = body.message || body.error || `Pentest request failed with ${response.status}`;
+            if (paths.length === 0) {
+              console.error("No pentest target paths were provided.");
+              process.exit(1);
             }
 
-            results.push(body);
-          }
+            const baseTargetUrl = "http://host.docker.internal:${{ inputs.app_port }}";
+            const results = [];
 
-          fs.writeFileSync("local-pentest-response.json", JSON.stringify(results, null, 2));
+            for (const path of paths) {
+              const targetUrl = `${baseTargetUrl}${path}`;
+              console.log(`Running pentest against ${targetUrl}`);
 
-          const lines = [];
-          lines.push("Local Docker Pentest Results");
-          lines.push("============================");
+              const response = await fetch("http://127.0.0.1:3001/scan", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify({ targetUrl })
+              });
+              const body = await response.json();
 
-          let passed = true;
-          for (const result of results) {
-            const summary = result.summary || {};
-            const resultPassed = result.success !== false && (summary.failed || 0) === 0 && (summary.errors || 0) === 0;
-            passed = passed && resultPassed;
+              if (!response.ok || body.success === false) {
+                body.success = false;
+                body.error = body.message || body.error || `Pentest request failed with ${response.status}`;
+              }
 
-            lines.push("");
-            lines.push(`Target: ${result.targetUrl || "unknown"}`);
-            lines.push(`Status: ${resultPassed ? "PASSED" : "FAILED"}`);
-
-            if (result.error) {
-              lines.push(`Error: ${result.error}`);
-            } else {
-              lines.push(`Total tests: ${summary.totalTests}`);
-              lines.push(`Passed: ${summary.passed}`);
-              lines.push(`Failed: ${summary.failed}`);
-              lines.push(`Warnings: ${summary.warnings}`);
-              lines.push(`Errors: ${summary.errors}`);
+              results.push(body);
             }
 
-            for (const test of result.results || []) {
+            fs.writeFileSync("local-pentest-response.json", JSON.stringify(results, null, 2));
+
+            const lines = [];
+            lines.push("Local Docker Pentest Results");
+            lines.push("============================");
+
+            let passed = true;
+            for (const result of results) {
+              const summary = result.summary || {};
+              const resultPassed = result.success !== false && (summary.failed || 0) === 0 && (summary.errors || 0) === 0;
+              passed = passed && resultPassed;
+
               lines.push("");
-              lines.push(`[${test.status}] ${test.id} ${test.name}`);
-              if (test.details) {
-                lines.push(test.details);
+              lines.push(`Target: ${result.targetUrl || "unknown"}`);
+              lines.push(`Status: ${resultPassed ? "PASSED" : "FAILED"}`);
+
+              if (result.error) {
+                lines.push(`Error: ${result.error}`);
+              } else {
+                lines.push(`Total tests: ${summary.totalTests}`);
+                lines.push(`Passed: ${summary.passed}`);
+                lines.push(`Failed: ${summary.failed}`);
+                lines.push(`Warnings: ${summary.warnings}`);
+                lines.push(`Errors: ${summary.errors}`);
               }
-              for (const finding of test.findings || []) {
-                lines.push(`- ${finding.issue || JSON.stringify(finding)}`);
+
+              for (const test of result.results || []) {
+                lines.push("");
+                lines.push(`[${test.status}] ${test.id} ${test.name}`);
+                if (test.details) {
+                  lines.push(test.details);
+                }
+                for (const finding of test.findings || []) {
+                  lines.push(`- ${finding.issue || JSON.stringify(finding)}`);
+                }
               }
             }
+
+            console.log(lines.join("\n"));
+
+            fs.appendFileSync(process.env.GITHUB_ENV, `LOCAL_PENTEST_PASSED=${passed}\n`);
           }
 
-          console.log(lines.join("\n"));
-
-          fs.appendFileSync(process.env.GITHUB_ENV, `LOCAL_PENTEST_PASSED=${passed}\n`);
+          main().catch((error) => {
+            console.error(error);
+            process.exit(1);
+          });
           NODE
 
       - name: Stop local pentest containers
