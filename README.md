@@ -140,6 +140,35 @@ jobs:
 
 Replace `YOUR_GITHUB_OWNER/YOUR_SECURITY_PLATFORM_REPO` with the GitHub repo where this security platform project is pushed. The workflow runs on every branch push, on pull requests, and when manually triggered.
 
+To run pentest scans against a Dockerized app in the repo being tested, the outside repo only needs a root-level `Dockerfile` and a comma-separated list of endpoint paths:
+
+```yaml
+name: Security Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  security-tests:
+    uses: YOUR_GITHUB_OWNER/YOUR_SECURITY_PLATFORM_REPO/.github/workflows/securitytests.yaml@main
+    permissions:
+      id-token: write
+      contents: read
+    with:
+      scanners: sast,pentest
+      app_port: "3000"
+      app_health_path: /health
+      pentest_target_paths: /api/users,/api/login,/api/products
+    secrets:
+      aws_access_key_id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      aws_secret_access_key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      aws_session_token: ${{ secrets.AWS_SESSION_TOKEN }}
+```
+
+For this mode, the reusable workflow builds the outside repo's Dockerfile, starts the app container, waits for the health endpoint, starts the pentest service container, scans each path in `pentest_target_paths`, and removes both containers at the end whether the scan passes or fails.
+
 ### 5. What Happens When It Runs
 
 The GitHub Action will:
@@ -147,8 +176,9 @@ The GitHub Action will:
 1. Check out the repo being tested.
 2. Zip the repo.
 3. Upload `repo.zip` to the deployed S3 bucket.
-4. Invoke the deployed Lambda.
-5. Print the Lambda response in the GitHub Actions logs.
+4. Invoke the deployed Lambda for SAST and remote URL pentest scans.
+5. Run local Docker pentest scans in GitHub Actions when `pentest_target_paths` is provided.
+6. Print the scan results in the GitHub Actions logs.
 
 If this succeeds, the CI/CD-to-AWS integration is working. The Actions logs will show a plain text summary and any findings, and the job fails when the selected scanner reports a failed security gate.
 

@@ -13,6 +13,31 @@ on:
         required: false
         type: string
         default: ""
+      pentest_target_paths:
+        description: "Comma-separated endpoint paths to scan against a Dockerized app running in GitHub Actions."
+        required: false
+        type: string
+        default: ""
+      app_dockerfile:
+        description: "Dockerfile path for the app to run during local pentest scans."
+        required: false
+        type: string
+        default: "Dockerfile"
+      app_port:
+        description: "Port exposed by the app container during local pentest scans."
+        required: false
+        type: string
+        default: "3000"
+      app_health_path:
+        description: "Health check path for the app container during local pentest scans."
+        required: false
+        type: string
+        default: "/health"
+      pentest_docker_image:
+        description: "Docker image for the pentest API service used during local pentest scans."
+        required: false
+        type: string
+        default: "spicehandler/pentest-app:latest"
   workflow_call:
     inputs:
       aws_region:
@@ -45,6 +70,31 @@ on:
         required: false
         type: string
         default: ""
+      pentest_target_paths:
+        description: "Comma-separated endpoint paths to scan against a Dockerized app running in GitHub Actions."
+        required: false
+        type: string
+        default: ""
+      app_dockerfile:
+        description: "Dockerfile path for the app to run during local pentest scans."
+        required: false
+        type: string
+        default: "Dockerfile"
+      app_port:
+        description: "Port exposed by the app container during local pentest scans."
+        required: false
+        type: string
+        default: "3000"
+      app_health_path:
+        description: "Health check path for the app container during local pentest scans."
+        required: false
+        type: string
+        default: "/health"
+      pentest_docker_image:
+        description: "Docker image for the pentest API service used during local pentest scans."
+        required: false
+        type: string
+        default: "spicehandler/pentest-app:latest"
     secrets:
       aws_access_key_id:
         description: "Temporary Learner Lab AWS access key ID. Only needed when OIDC role is unavailable."
@@ -68,15 +118,31 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Plan security scan modes
+        run: |
+          node <<'NODE' >> "$GITHUB_ENV"
+          const scanners = "${{ inputs.scanners }}"
+            .split(",")
+            .map((scanner) => scanner.trim().toLowerCase())
+            .filter(Boolean);
+          const uniqueScanners = [...new Set(scanners.length > 0 ? scanners : ["sast"])];
+          const runLocalPentest = uniqueScanners.includes("pentest") && "${{ inputs.pentest_target_paths }}" !== "";
+          const lambdaScanners = uniqueScanners.filter((scanner) => scanner !== "pentest" || !runLocalPentest);
+
+          console.log(`RUN_LOCAL_PENTEST=${runLocalPentest}`);
+          console.log(`RUN_LAMBDA=${lambdaScanners.length > 0}`);
+          console.log(`LAMBDA_SCANNERS=${lambdaScanners.join(",")}`);
+          NODE
+
       - name: Configure AWS credentials with OIDC
-        if: ${{ inputs.aws_role_arn != '' || vars.SECURITY_SCAN_AWS_ROLE_ARN != '' }}
+        if: ${{ env.RUN_LAMBDA == 'true' && (inputs.aws_role_arn != '' || vars.SECURITY_SCAN_AWS_ROLE_ARN != '') }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ inputs.aws_role_arn || vars.SECURITY_SCAN_AWS_ROLE_ARN }}
           aws-region: ${{ inputs.aws_region || vars.SECURITY_SCAN_AWS_REGION || 'us-east-1' }}
 
       - name: Configure AWS credentials with Learner Lab secrets
-        if: ${{ inputs.aws_role_arn == '' && vars.SECURITY_SCAN_AWS_ROLE_ARN == '' }}
+        if: ${{ env.RUN_LAMBDA == 'true' && inputs.aws_role_arn == '' && vars.SECURITY_SCAN_AWS_ROLE_ARN == '' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.aws_access_key_id }}
@@ -85,6 +151,7 @@ jobs:
           aws-region: ${{ inputs.aws_region || vars.SECURITY_SCAN_AWS_REGION || 'us-east-1' }}
 
       - name: Package repository
+        if: ${{ env.RUN_LAMBDA == 'true' }}
         run: |
           zip -r repo.zip . \
             -x ".git/*" \
@@ -96,6 +163,7 @@ jobs:
             -x "*/build/*"
 
       - name: Upload repository zip to S3
+        if: ${{ env.RUN_LAMBDA == 'true' }}
         env:
           ARTIFACT_BUCKET: ${{ inputs.artifact_bucket || vars.SECURITY_SCAN_ARTIFACT_BUCKET }}
           S3_KEY: github/${{ github.repository_owner }}-${{ github.event.repository.name }}/${{ github.run_id }}/repo.zip
@@ -104,6 +172,7 @@ jobs:
           echo "S3_KEY=${S3_KEY}" >> "$GITHUB_ENV"
 
       - name: Invoke repo reader Lambda
+        if: ${{ env.RUN_LAMBDA == 'true' }}
         env:
           ARTIFACT_BUCKET: ${{ inputs.artifact_bucket || vars.SECURITY_SCAN_ARTIFACT_BUCKET }}
           LAMBDA_FUNCTION_NAME: ${{ inputs.lambda_function_name || vars.SECURITY_SCAN_LAMBDA_FUNCTION_NAME }}
@@ -117,12 +186,13 @@ jobs:
               \"runId\": \"${{ github.run_id }}\",
               \"s3Bucket\": \"${ARTIFACT_BUCKET}\",
               \"s3Key\": \"${S3_KEY}\",
-              \"scanners\": \"${{ inputs.scanners }}\",
+              \"scanners\": \"${LAMBDA_SCANNERS}\",
               \"pentestTargetUrl\": \"${{ inputs.pentest_target_url }}\"
             }" \
             lambda-response.json
 
       - name: Print security scan results
+        if: ${{ env.RUN_LAMBDA == 'true' }}
         run: |
           node <<'NODE'
           const fs = require('fs');
@@ -203,7 +273,152 @@ jobs:
 
           console.log(lines.join('\n'));
 
-          if (!body.success || !body.passed) {
+          fs.appendFileSync(process.env.GITHUB_ENV, `LAMBDA_SCAN_PASSED=${body.success && body.passed}\n`);
+          NODE
+
+      - name: Build local pentest target app
+        if: ${{ env.RUN_LOCAL_PENTEST == 'true' }}
+        run: |
+          docker build \
+            -f "${{ inputs.app_dockerfile }}" \
+            -t security-test-target .
+
+      - name: Start local pentest target app
+        if: ${{ env.RUN_LOCAL_PENTEST == 'true' }}
+        run: |
+          docker run -d \
+            --name security-test-target \
+            -p "127.0.0.1:${{ inputs.app_port }}:${{ inputs.app_port }}" \
+            security-test-target
+
+      - name: Wait for local pentest target app
+        if: ${{ env.RUN_LOCAL_PENTEST == 'true' }}
+        run: |
+          for i in {1..30}; do
+            if curl -fsS "http://127.0.0.1:${{ inputs.app_port }}${{ inputs.app_health_path }}"; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker logs security-test-target
+          exit 1
+
+      - name: Start local pentest service
+        if: ${{ env.RUN_LOCAL_PENTEST == 'true' }}
+        run: |
+          docker run -d \
+            --name security-test-pentest \
+            --add-host=host.docker.internal:host-gateway \
+            -p "127.0.0.1:3001:3000" \
+            "${{ inputs.pentest_docker_image }}"
+
+      - name: Wait for local pentest service
+        if: ${{ env.RUN_LOCAL_PENTEST == 'true' }}
+        run: |
+          for i in {1..30}; do
+            if curl -fsS "http://127.0.0.1:3001/health"; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker logs security-test-pentest
+          exit 1
+
+      - name: Run local pentest scans
+        if: ${{ env.RUN_LOCAL_PENTEST == 'true' }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+
+          const paths = "${{ inputs.pentest_target_paths }}"
+            .split(",")
+            .map((path) => path.trim())
+            .filter(Boolean)
+            .map((path) => path.startsWith("/") ? path : `/${path}`);
+
+          if (paths.length === 0) {
+            console.error("No pentest target paths were provided.");
             process.exit(1);
           }
+
+          const baseTargetUrl = "http://host.docker.internal:${{ inputs.app_port }}";
+          const results = [];
+
+          for (const path of paths) {
+            const targetUrl = `${baseTargetUrl}${path}`;
+            console.log(`Running pentest against ${targetUrl}`);
+
+            const response = await fetch("http://127.0.0.1:3001/scan", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify({ targetUrl })
+            });
+            const body = await response.json();
+
+            if (!response.ok || body.success === false) {
+              body.success = false;
+              body.error = body.message || body.error || `Pentest request failed with ${response.status}`;
+            }
+
+            results.push(body);
+          }
+
+          fs.writeFileSync("local-pentest-response.json", JSON.stringify(results, null, 2));
+
+          const lines = [];
+          lines.push("Local Docker Pentest Results");
+          lines.push("============================");
+
+          let passed = true;
+          for (const result of results) {
+            const summary = result.summary || {};
+            const resultPassed = result.success !== false && (summary.failed || 0) === 0 && (summary.errors || 0) === 0;
+            passed = passed && resultPassed;
+
+            lines.push("");
+            lines.push(`Target: ${result.targetUrl || "unknown"}`);
+            lines.push(`Status: ${resultPassed ? "PASSED" : "FAILED"}`);
+
+            if (result.error) {
+              lines.push(`Error: ${result.error}`);
+            } else {
+              lines.push(`Total tests: ${summary.totalTests}`);
+              lines.push(`Passed: ${summary.passed}`);
+              lines.push(`Failed: ${summary.failed}`);
+              lines.push(`Warnings: ${summary.warnings}`);
+              lines.push(`Errors: ${summary.errors}`);
+            }
+
+            for (const test of result.results || []) {
+              lines.push("");
+              lines.push(`[${test.status}] ${test.id} ${test.name}`);
+              if (test.details) {
+                lines.push(test.details);
+              }
+              for (const finding of test.findings || []) {
+                lines.push(`- ${finding.issue || JSON.stringify(finding)}`);
+              }
+            }
+          }
+
+          console.log(lines.join("\n"));
+
+          fs.appendFileSync(process.env.GITHUB_ENV, `LOCAL_PENTEST_PASSED=${passed}\n`);
           NODE
+
+      - name: Stop local pentest containers
+        if: always()
+        run: |
+          docker rm -f security-test-pentest 2>/dev/null || true
+          docker rm -f security-test-target 2>/dev/null || true
+
+      - name: Fail when security scans fail
+        if: always()
+        run: |
+          if [ "${LAMBDA_SCAN_PASSED:-true}" != "true" ] || [ "${LOCAL_PENTEST_PASSED:-true}" != "true" ]; then
+            exit 1
+          fi
