@@ -74,6 +74,14 @@ SECURITY_SCAN_LAMBDA_FUNCTION_NAME=security-scan-YOUR_NAME-repo-reader
 
 Save these values. You will add them to the GitHub repo that should run the security test workflow.
 
+To tear down the deployed Learner Lab infrastructure later, export your current Learner Lab credentials again and run:
+
+```bash
+./scripts/destroy-learner-lab.sh
+```
+
+The script destroys Lambda, the SAST EC2 stack, the pentest EC2 stack, empties the artifact bucket, and destroys the S3 stack.
+
 ### 2. Add GitHub Actions Secrets
 
 In the GitHub repo you want to test, go to:
