@@ -55,15 +55,6 @@ on:
       aws_session_token:
         description: "Temporary Learner Lab AWS session token. Only needed when OIDC role is unavailable."
         required: false
-      AWS_ACCESS_KEY_ID:
-        description: "Temporary Learner Lab AWS access key ID. Uppercase alias for caller workflows."
-        required: false
-      AWS_SECRET_ACCESS_KEY:
-        description: "Temporary Learner Lab AWS secret access key. Uppercase alias for caller workflows."
-        required: false
-      AWS_SESSION_TOKEN:
-        description: "Temporary Learner Lab AWS session token. Uppercase alias for caller workflows."
-        required: false
 
 jobs:
   security-tests:
