@@ -169,6 +169,18 @@ jobs:
 
 For this mode, the reusable workflow builds the outside repo's Dockerfile, starts the app container, waits for the health endpoint, starts the pentest service container, scans each path in `pentest_target_paths`, and removes both containers at the end whether the scan passes or fails.
 
+If the app Dockerfile is not at the repo root, pass its path and build context:
+
+```yaml
+    with:
+      scanners: sast,pentest
+      app_dockerfile: backend/Dockerfile
+      app_context: backend
+      app_port: "3000"
+      app_health_path: /health
+      pentest_target_paths: /api/users,/api/login
+```
+
 ### 5. What Happens When It Runs
 
 The GitHub Action will:

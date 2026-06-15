@@ -23,6 +23,11 @@ on:
         required: false
         type: string
         default: "Dockerfile"
+      app_context:
+        description: "Docker build context for the app to run during local pentest scans."
+        required: false
+        type: string
+        default: "."
       app_port:
         description: "Port exposed by the app container during local pentest scans."
         required: false
@@ -80,6 +85,11 @@ on:
         required: false
         type: string
         default: "Dockerfile"
+      app_context:
+        description: "Docker build context for the app to run during local pentest scans."
+        required: false
+        type: string
+        default: "."
       app_port:
         description: "Port exposed by the app container during local pentest scans."
         required: false
@@ -279,9 +289,22 @@ jobs:
       - name: Build local pentest target app
         if: ${{ env.RUN_LOCAL_PENTEST == 'true' }}
         run: |
+          if [ ! -f "${{ inputs.app_dockerfile }}" ]; then
+            echo "Could not find Dockerfile at '${{ inputs.app_dockerfile }}'."
+            echo "Set app_dockerfile to the Dockerfile path in the repo that calls this workflow."
+            exit 1
+          fi
+
+          if [ ! -d "${{ inputs.app_context }}" ]; then
+            echo "Could not find Docker build context directory at '${{ inputs.app_context }}'."
+            echo "Set app_context to the directory Docker should build from."
+            exit 1
+          fi
+
           docker build \
             -f "${{ inputs.app_dockerfile }}" \
-            -t security-test-target .
+            -t security-test-target \
+            "${{ inputs.app_context }}"
 
       - name: Start local pentest target app
         if: ${{ env.RUN_LOCAL_PENTEST == 'true' }}
